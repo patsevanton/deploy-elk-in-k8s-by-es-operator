@@ -840,3 +840,60 @@ resources:
 -----------------------------
 
 ```
+
+
+## Бекап elasticsearch
+
+```
+Название файла: ./snapshot-policy.yaml
+Содержимое файла:
+apiVersion: es.eck.github.com/v1alpha1
+kind: SnapshotLifecyclePolicy
+metadata:
+  name: myelasticsearch-backup-policy
+  namespace: myelasticsearch
+spec:
+  body: |
+    {
+      "schedule": "0 */15 * * * ?", 
+      "name": "myelasticsearch-snapshot-policy", 
+      "repository": "myelasticsearch-backup-repository", 
+      "config": { 
+        "indices": ["*"], 
+        "ignore_unavailable": false,
+        "include_global_state": true
+      },
+      "retention": { 
+        "expire_after": "14d", 
+        "min_count": 72, 
+        "max_count": 336 
+      }
+    }
+-----------------------------
+Название файла: ./snapshot-repository.yaml
+Содержимое файла:
+apiVersion: es.eck.github.com/v1alpha1
+kind: SnapshotRepository
+metadata:
+  name: backup-repository
+  namespace: myelasticsearch
+spec:
+  body: |
+    {
+      "type": "s3",
+      "settings": {
+        "bucket": "elastic-backup",
+        "client": "backups"
+      }
+    }
+-----------------------------
+Название файла: ./kustomization.yaml
+Содержимое файла:
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - snapshot-policy.yaml
+  - snapshot-repository.yaml
+-----------------------------
+
+```
