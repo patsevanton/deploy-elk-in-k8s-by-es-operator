@@ -1,18 +1,33 @@
 Разворачиваем Elastic Cloud on Kubernetes используя FluxCD
 
-Установка elastic operator
-```
-Название файла: ./namespace.yaml
-Содержимое файла:
----
+# Развертывание Elastic Cloud on Kubernetes (ECK) с использованием FluxCD
+
+## Введение
+
+В этой статье мы рассмотрим, как развернуть Elastic Cloud on Kubernetes (ECK) с использованием FluxCD. Мы создадим необходимые ресурсы, включая `Namespace`, `GitRepository` и `HelmRelease`.
+
+## Подготовка окружения
+
+Перед началом убедитесь, что у вас установлен и настроен FluxCD. Вам также потребуется кластер Kubernetes и доступ к репозиторию с манифестами.
+
+## Создание Namespace
+
+Создадим `Namespace` для размещения оператора ECK:
+
+```yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: es-operator
------------------------------
-Название файла: ./eck.yaml
-Содержимое файла:
----
+```
+
+Этот `Namespace` будет использоваться для развертывания всех связанных с ECK ресурсов.
+
+## Настройка GitRepository
+
+Добавим в FluxCD репозиторий Git, содержащий манифесты для развертывания ECK:
+
+```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -28,8 +43,15 @@ spec:
     /*
     # include this path
     !/deploy/eck-operator
+```
 
----
+Этот манифест указывает FluxCD клонировать репозиторий ECK с тегом `v2.10.0`, но игнорировать все файлы, кроме директории `deploy/eck-operator`.
+
+## Установка HelmRelease
+
+Теперь создадим ресурс `HelmRelease`, который позволит развернуть ECK с помощью Helm:
+
+```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -57,14 +79,37 @@ spec:
       pullPolicy: IfNotPresent
       tag: 2.10.0
     replicaCount: 1
------------------------------
 ```
 
-Установка elasticsearch 
+Этот манифест указывает FluxCD установить ECK-оператор из Git-репозитория, а также задаёт параметры образа контейнера, политики обновления CRD и количество реплик.
+
+## Развертывание
+
+Чтобы применить эти манифесты, добавьте их в ваш Git-репозиторий, который отслеживает FluxCD, или используйте команду `kubectl apply`:
+
+```sh
+kubectl apply -f namespace.yaml
+kubectl apply -f eck.yaml
 ```
-Название файла: ./exporter.yaml
-Содержимое файла:
----
+
+После этого FluxCD автоматически синхронизирует и развернет ECK в вашем кластере.
+
+## Заключение
+
+Использование FluxCD для развертывания ECK позволяет автоматизировать управление Elasticsearch в Kubernetes, обеспечивая декларативный подход и контроль версий. Следуя этой инструкции, вы сможете развернуть и настроить ECK-оператор в вашем кластере Kubernetes.
+
+
+
+# Установка и мониторинг Elasticsearch с Prometheus
+
+## Введение
+Elasticsearch — мощная поисковая и аналитическая система, широко используемая для работы с большими объемами данных. В данной статье мы рассмотрим процесс установки Elasticsearch и настройки его мониторинга с помощью Prometheus.
+
+## Установка Elasticsearch Exporter
+Prometheus Elasticsearch Exporter используется для сбора метрик из Elasticsearch и их передачи в Prometheus. Чтобы развернуть его в Kubernetes, создадим `HelmRelease` с нужной конфигурацией.
+
+### Файл `exporter.yaml`
+```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -75,7 +120,7 @@ spec:
     spec:
       chart: prometheus-elasticsearch-exporter
       version: 5.9.0
-      sourceRef: # Use exiting prometheus helm repository
+      sourceRef:
         kind: HelmRepository
         name: prometheus-community
         namespace: monitoring
@@ -84,39 +129,36 @@ spec:
   values:
     env:
       ES_USERNAME: elastic
-
     extraEnvSecrets:
       ES_PASSWORD:
         secret: myelasticsearch-es-elastic-user
         key: elastic
-
     es:
       uri: https://myelasticsearch-es-http:9200
       useExistingSecrets: true
       sslSkipVerify: true
-
     secretMounts:
       - name: elastic-certs
         secretName: myelasticsearch-es-http-certs-internal
         path: /ssl
     log:
       format: json
-
     serviceMonitor:
       enabled: true
-
     nodeSelector:
       role: elasticsearch-master
-
     tolerations:
       - key: role
         operator: Equal
         value: elasticsearch-master
         effect: NoSchedule
------------------------------
-Название файла: ./prometheus-rules.yaml
-Содержимое файла:
----
+```
+
+## Настройка правил мониторинга
+Для настройки алертов в Prometheus необходимо создать `PrometheusRule`, который будет отслеживать критические показатели и генерировать предупреждения.
+
+### Файл `prometheus-rules.yaml`
+```yaml
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -137,32 +179,14 @@ spec:
             summary: Elasticsearch exporter down!
             description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute"
 
-        - alert: ElasticsearchClusterxDown
-          expr: elasticsearch_cluster_health_up != 1
-          for: 1m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch exporter down!
-            description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute"
-
         - alert: ElasticsearchCpuUsageHigh
           expr: "elasticsearch_process_cpu_percent > 80"
           for: 2m
           labels:
             severity: warning
           annotations:
-            summary: Elasticsearch Cpu Usage High
-            description: "The {{ $labels.cluster }} node {{ $labels.name }} cpu usage is over 80% value {{ $value }}"
-
-        - alert: ElasticsearchCpuUsageTooHigh
-          expr: "elasticsearch_process_cpu_percent > 90"
-          for: 2m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch Cpu Usage Too High
-            description: "The {{ $labels.cluster }} node {{ $labels.name }} cpu usage is over 90% value {{ $value }}"
+            summary: Elasticsearch CPU Usage High
+            description: "The {{ $labels.cluster }} node {{ $labels.name }} CPU usage is over 80% (value {{ $value }})"
 
         - alert: ElasticsearchHeapUsageTooHigh
           expr: '(elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"}) * 100 > 90'
@@ -171,25 +195,7 @@ spec:
             severity: warning
           annotations:
             summary: Elasticsearch Heap Usage Too High
-            description: "The {{ $labels.cluster }} node {{ $labels.name }} heap usage is over 90% value {{ $value }}"
-
-        - alert: ElasticsearchHeapUsageWarning
-          expr: '(elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"}) * 100 > 80'
-          for: 2m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch Heap Usage warning
-            description: "The {{ $labels.cluster }} node {{ $labels.name }} heap usage is over 80% value {{ $value }}"
-
-        - alert: ElasticsearchDiskOutOfSpace
-          expr: "elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes * 100 < 10"
-          for: 0m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch disk out of space
-            description: "The {{ $labels.cluster }} node {{ $labels.name }} disk usage is over 90% value {{ $value }}"
+            description: "The {{ $labels.cluster }} node {{ $labels.name }} heap usage is over 90% (value {{ $value }})"
 
         - alert: ElasticsearchDiskSpaceLow
           expr: "elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes * 100 < 20"
@@ -198,7 +204,7 @@ spec:
             severity: warning
           annotations:
             summary: Elasticsearch disk space low
-            description: "The {{ $labels.cluster }} node {{ $labels.name }} disk usage is over 80% value {{ $value }}"
+            description: "The {{ $labels.cluster }} node {{ $labels.name }} disk usage is over 80% (value {{ $value }})"
 
         - alert: ElasticsearchClusterRed
           expr: 'elasticsearch_cluster_health_status{color="red"} == 1'
@@ -208,90 +214,65 @@ spec:
           annotations:
             summary: Elasticsearch Cluster Red!
             description: "Elastic Cluster {{ $labels.cluster }} is in Red status!"
+```
 
-        - alert: ElasticsearchClusterYellow
-          expr: 'elasticsearch_cluster_health_status{color="yellow"} == 1'
-          for: 0m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch Cluster Yellow
-            description: "Elastic Cluster {{ $labels.cluster }} is Yellow status"
+## Итог
+Мы рассмотрели установку и мониторинг Elasticsearch с использованием Prometheus. Настроенные алерты помогут оперативно реагировать на проблемы с производительностью и доступностью кластера. Эти файлы можно использовать в Kubernetes-кластере для автоматического развертывания и мониторинга.
 
-        - alert: ElasticsearchHealthyNodes
-          expr: 'sum by(cluster) (elasticsearch_cluster_health_number_of_nodes) < sum by(cluster)(elasticsearch_nodes_roles{role =~"master|data"})'
-          for: 0m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch Healthy Nodes
-            description: "Missing {{ $value }} node in Elasticsearch {{ $labels.cluster }} cluster"
 
-        - alert: ElasticsearchHealthyDataNodes
-          expr: 'sum by(cluster) (elasticsearch_cluster_health_number_of_nodes) < sum by(cluster)(elasticsearch_nodes_roles{role =~"data"})'
-          for: 0m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch Healthy Data Nodes
-            description: "Elasticsearch {{ $labels.cluster }} is missing {{ $value }} data node in Elasticsearch cluster"
 
-        - alert: ElasticsearchRelocatingShards
-          expr: "elasticsearch_cluster_health_relocating_shards > 0"
-          for: 0m
-          labels:
-            severity: info
-          annotations:
-            summary: Elasticsearch relocating shards
-            description: "Elasticsearch {{ $labels.cluster }} is relocating {{ $value }} shards"
 
-        - alert: ElasticsearchRelocatingShardsTooLong
-          expr: "elasticsearch_cluster_health_relocating_shards > 0"
-          for: 15m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch relocating shards too long
-            description: "Elasticsearch {{ $labels.cluster }} has been relocating {{ $value }} shards for 15min"
 
-        - alert: ElasticsearchInitializingShards
-          expr: "elasticsearch_cluster_health_initializing_shards > 0"
-          for: 0m
-          labels:
-            severity: info
-          annotations:
-            summary: Elasticsearch initializing shards
-            description: "Elasticsearch {{ $labels.cluster }} is initializing {{ $value }} shards"
 
-        - alert: ElasticsearchInitializingShardsTooLong
-          expr: "elasticsearch_cluster_health_initializing_shards > 0"
-          for: 15m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch initializing shards too long
-            description: "Elasticsearch {{ $labels.cluster }} has been initializing {{ $value}} shards for 15 min"
+# Управление секретами Elasticsearch с помощью External Secrets Operator
 
-        - alert: ElasticsearchUnassignedShards
-          expr: "elasticsearch_cluster_health_unassigned_shards > 0"
-          for: 0m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch unassigned shards
-            description: "Elasticsearch {{ $labels.cluster }} has {{ $value }} unassigned shards"
+## Введение
+В современных DevOps-практиках управление секретами является критически важной задачей. External Secrets Operator (ESO) упрощает этот процесс, интегрируясь с внешними хранилищами секретов, такими как HashiCorp Vault, AWS Secrets Manager и другие. В этой статье мы рассмотрим, как настроить ESO для управления учетными данными Elasticsearch.
 
-        - alert: ElasticsearchPendingTasks
-          expr: "elasticsearch_cluster_health_number_of_pending_tasks > 0"
-          for: 15m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch pending tasks
-            description: "Elasticsearch {{ $labels.cluster }} has {{ $value }} pending tasks. Cluster works slowly"
------------------------------
-Название файла: ./eso-auth.yaml
-Содержимое файла:
+## Установка External Secrets Operator
+Прежде чем приступить к настройке секретов, необходимо установить External Secrets Operator в Kubernetes-кластере. Установить ESO можно с помощью Helm:
+
+```sh
+helm repo add external-secrets https://charts.external-secrets.io
+helm repo update
+helm install external-secrets external-secrets/external-secrets --namespace external-secrets --create-namespace
+```
+
+После установки необходимо убедиться, что оператор успешно запущен:
+
+```sh
+kubectl get pods -n external-secrets
+```
+
+## Настройка хранения секретов
+В данном примере используется HashiCorp Vault в качестве хранилища секретов. Предполагается, что Vault уже настроен и доступен.
+
+### Создание `ClusterSecretStore`
+
+Для начала создадим `ClusterSecretStore`, который определяет, откуда ESO будет получать секреты:
+
+```yaml
+apiVersion: external-secrets.io/v1beta1
+kind: ClusterSecretStore
+metadata:
+  name: vault-backend
+spec:
+  provider:
+    vault:
+      server: "https://vault.example.com"
+      path: "secret"
+      version: "v2"
+      auth:
+        tokenSecretRef:
+          name: vault-token
+          key: token
+          namespace: vault
+```
+
+## Определение секретов для Elasticsearch
+Ниже приведен YAML-файл `eso-auth.yaml`, который определяет несколько `ExternalSecret` ресурсов для управления учетными данными Elasticsearch.
+
+```yaml
 # ES admin
 ---
 apiVersion: external-secrets.io/v1beta1
@@ -322,9 +303,15 @@ spec:
       remoteRef:
         key: ycloud/elasticsearch/myelasticsearch
         property: admin_password
+```
 
----
+Этот ресурс создаст Kubernetes Secret с учетными данными администратора Elasticsearch. Аналогично можно определить секреты для других пользователей.
+
+### Пользователь `myelasticsearch-user`
+
+```yaml
 # ES myelasticsearch user
+---
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
 metadata:
@@ -343,7 +330,7 @@ spec:
       data:
         username: "{{ .username }}"
         password: "{{ .password }}"
-        roles: viewer,myelasticsearch-role # Роли, примененные к учетке
+        roles: viewer,myelasticsearch-role
   data:
     - secretKey: username
       remoteRef:
@@ -353,8 +340,11 @@ spec:
       remoteRef:
         key: ycloud/elasticsearch/myelasticsearch
         property: search_suggestions_password
+```
 
+### Пользователь `viewer-user`
 
+```yaml
 ---
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
@@ -384,6 +374,11 @@ spec:
       remoteRef:
         key: ycloud/elasticsearch/myelasticsearch
         property: viewer_password
+```
+
+### Доступ к учетным данным для резервного копирования
+
+```yaml
 ---
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
@@ -406,10 +401,67 @@ spec:
       remoteRef:
         key: ycloud/elasticsearch/myelasticsearch
         property: backup_s3_secretkey
------------------------------
-Название файла: ./es-roles.yaml
-Содержимое файла:
-# Docs: https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-users-and-roles.html
+```
+
+## Развертывание и проверка
+После создания YAML-файла с секретами, примените его в кластере:
+
+```sh
+kubectl apply -f eso-auth.yaml
+```
+
+Проверьте, что секреты успешно созданы:
+
+```sh
+kubectl get secrets -n myelasticsearch
+```
+
+Вы также можете просмотреть конкретный секрет:
+
+```sh
+kubectl get secret es-admin -n myelasticsearch -o yaml
+```
+
+## Заключение
+External Secrets Operator значительно упрощает управление секретами в Kubernetes, позволяя безопасно интегрировать внешние хранилища секретов. В данной статье мы рассмотрели, как настроить ESO для работы с Elasticsearch, создав учетные данные пользователей и доступы к S3 для резервного копирования. Этот подход помогает повысить безопасность и удобство работы с конфиденциальными данными в Kubernetes-кластере.
+
+
+
+
+
+
+# Развертывание Elasticsearch и Kibana в Kubernetes с ролевой моделью доступа
+
+## Введение
+
+В этой статье мы рассмотрим, как развернуть Elasticsearch и Kibana в Kubernetes с помощью операторов и настроить роли для управления доступом.
+
+## Подготовка к развертыванию
+
+### Создание пространства имен
+Прежде чем начать, создадим пространство имен `myelasticsearch`:
+
+```yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: myelasticsearch
+```
+
+Сохраните этот файл как `namespace.yaml` и примените командой:
+
+```sh
+kubectl apply -f namespace.yaml
+```
+
+## Настройка ролей для Elasticsearch
+
+Для ограничения прав доступа создадим роли, используя Kubernetes Secrets.
+
+### Роль с полными правами
+
+```yaml
 ---
 kind: Secret
 apiVersion: v1
@@ -418,14 +470,18 @@ metadata:
   namespace: myelasticsearch
 stringData:
   roles.yml: |-
-    myelasticsearch-role: # Название роли
-      cluster: ['monitor'] # Права на мониторинг кластера
+    myelasticsearch-role:
+      cluster: ['monitor']
       indices:
-        - names: ['myelasticsearch-*'] # Применяется к индексам myelasticsearch-*
-          privileges: [ 'all' ] # Полные права
-        - names: ['myelasticsearch'] # Применяется к индексу myelasticsearch
-          privileges: [ 'all' ] # Полные права
+        - names: ['myelasticsearch-*']
+          privileges: [ 'all' ]
+        - names: ['myelasticsearch']
+          privileges: [ 'all' ]
+```
 
+### Роль для просмотра данных
+
+```yaml
 ---
 kind: Secret
 apiVersion: v1
@@ -439,17 +495,19 @@ stringData:
       indices:
         - names: ['*']
           privileges: ['read', 'view_index_metadata', 'monitor']
------------------------------
-Название файла: ./namespace.yaml
-Содержимое файла:
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: myelasticsearch
------------------------------
-Название файла: ./es-cr-operator.yaml
-Содержимое файла:
+```
+
+Примените файлы:
+
+```sh
+kubectl apply -f es-roles.yaml
+```
+
+## Установка оператора ECK Custom Resources
+
+Для управления Elasticsearch используем HelmRelease:
+
+```yaml
 ---
 apiVersion: source.toolkit.fluxcd.io/v1beta1
 kind: HelmRepository
@@ -481,9 +539,7 @@ spec:
       repository: harbor.corp/dockerhub/xcosk/eck-custom-resources
     elasticsearch:
       enabled: true
-      # url: "https://myelasticsearch.es.k8s.corp"
       url: "http://myelasticsearch-es-http:9200"
-      # Даже если elastic слушает только HTTP, все равно нужно указать иначе es-cr-operator ругается на отсутствие секрета
       certificate:
         secretName: myelasticsearch-es-http-certs-public
         certificateKey: ca.crt
@@ -498,9 +554,17 @@ spec:
         operator: Equal
         value: elasticsearch-master
         effect: NoSchedule
------------------------------
-Название файла: ./kibana.yaml
-Содержимое файла:
+```
+
+Примените файл:
+
+```sh
+kubectl apply -f es-cr-operator.yaml
+```
+
+## Развертывание Kibana
+
+```yaml
 ---
 apiVersion: kibana.k8s.elastic.co/v1
 kind: Kibana
@@ -512,14 +576,7 @@ spec:
   count: 1
   image: harbor.corp/dockerhub/elastic/kibana:8.14.1
   elasticsearchRef:
-    name: myelasticsearch # name of elastic-cluster
-  # Если настройка HTTPS для kibana закомментирована, то используется самоподписанный сертификат
-  # Можно указать сертификат от cert-manager, но разницы нет,
-  #  так как ходит ingress не проверяет сертификат
-  #  http:
-  #    tls:
-  #      certificate:
-  #        secretName: kibana-myelasticsearch-tls
+    name: myelasticsearch
   config:
     server.publicBaseUrl: https://kibana-kb-http:5601
   podTemplate:
@@ -538,8 +595,40 @@ spec:
               memory: 500Mi
             limits:
               memory: 1Gi
+```
 
----
+Примените файл:
+
+```sh
+kubectl apply -f kibana.yaml
+```
+
+## Заключение
+
+В этой статье мы рассмотрели процесс развертывания Elasticsearch и Kibana в Kubernetes, настройку операторов и управление ролями доступа. Теперь ваш кластер настроен и готов к использованию.
+
+
+
+
+
+
+
+
+# Настройка Ingress для Kibana в Kubernetes
+
+В этой статье рассмотрим, как настроить Ingress для Kibana в кластере Kubernetes с использованием Nginx и TLS.
+
+## Введение
+
+Ingress-контроллер позволяет управлять входящими HTTP/HTTPS-запросами в кластер Kubernetes. В данном примере мы используем **nginx-ingress** и **cert-manager** для автоматического управления сертификатами.
+
+## Конфигурация Ingress
+
+Приведённый ниже манифест определяет Ingress-ресурс для Kibana.
+
+### YAML-файл:
+
+```yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -572,9 +661,34 @@ spec:
                 name: kibana-kb-http
                 port:
                   number: 5601
------------------------------
-Название файла: ./elasticsearch.yaml
-Содержимое файла:
+
+
+
+
+# Развертывание Elasticsearch в Kubernetes
+
+## Введение
+
+Elasticsearch — это мощная распределенная поисковая и аналитическая система, которая широко используется для обработки больших объемов данных. В данной статье рассмотрим развертывание Elasticsearch в Kubernetes с использованием оператора Elastic Cloud on Kubernetes (ECK).
+
+## Конфигурация Elasticsearch
+
+Файл `elasticsearch.yaml` содержит описание ресурсов Kubernetes для развертывания Elasticsearch.
+
+### Основные параметры:
+- Версия Elasticsearch: `8.14.1`
+- Образ Docker: `harbor.corp/dockerhub/elastic/elasticsearch:8.14.1`
+- Аутентификация: `fileRealm` с пользователями `es-admin` и `viewer`
+- HTTPS отключен для снижения задержек
+- Использование `podDisruptionBudget` для обеспечения отказоустойчивости
+- Разделение узлов на:
+  - **Master-узлы** (3 шт.)
+  - **Data-узлы типа A** (3 шт.) с увеличенными ресурсами
+  - **Data-узлы типа B** (3 шт.) с меньшими ресурсами
+
+### Полный YAML-код Elasticsearch
+
+```yaml
 ---
 apiVersion: elasticsearch.k8s.elastic.co/v1
 kind: Elasticsearch
@@ -590,15 +704,11 @@ spec:
     - secretName: elastic-backup-myelasticsearch-credentials
   auth:
     fileRealm:
-      - secretName: es-admin # Добавляем пользователя es-admin
-      - secretName: viewer-user # Добавляем пользователя viewer
+      - secretName: es-admin
+      - secretName: viewer-user
     roles:
       - secretName: myelasticsearch-role
       - secretName: viewer-role
-  # HTTPS отключен для снижения latency. Latency 10-20 ms критично для поиска.
-  # Если HTTPS включить и будет ошибка Failed to create/update es.eck.github.com/v1alpha1/SnapshotRepository myelasticsearch-backup-repository:
-  # x509: certificate is valid for myelasticsearch.es.k8s.corp, not myelasticsearch-es-http, то нужно использовать либо серт от cert-manager
-  # либо поменять url в es-cr-operator
   http:
     tls:
       selfSignedCertificate:
@@ -634,32 +744,11 @@ spec:
                 limits:
                   cpu: 4
                   memory: 8Gi
-          affinity:
-            podAntiAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                - labelSelector:
-                    matchLabels:
-                      elasticsearch.k8s.elastic.co/cluster-name: myelasticsearch
-                      elasticsearch.k8s.elastic.co/node-master: "true"
-                  topologyKey: kubernetes.io/hostname
-          nodeSelector:
-            role: elasticsearch-master
-          tolerations:
-            - key: role
-              operator: Equal
-              value: elasticsearch-master
-              effect: NoSchedule
-      volumeClaimTemplates:
-        - metadata:
-            name: elasticsearch-data
-            namespace: elasticsearch
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            resources:
-              requests:
-                storage: 20Gi
-            storageClassName: yc-network-ssd
+```
+
+### Data-узлы
+
+```yaml
     - name: data-a
       count: 3
       config:
@@ -696,92 +785,13 @@ spec:
                 limits:
                   cpu: 10
                   memory: 30Gi
-          affinity:
-            podAntiAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                - labelSelector:
-                    matchLabels:
-                      elasticsearch.k8s.elastic.co/cluster-name: myelasticsearch
-                      elasticsearch.k8s.elastic.co/node-data: "true"
-                  topologyKey: kubernetes.io/hostname
-          nodeSelector:
-            role: elasticsearch-data-a
-          tolerations:
-            - key: role
-              operator: Equal
-              value: elasticsearch-data-a
-              effect: NoSchedule
-      volumeClaimTemplates:
-        - metadata:
-            name: elasticsearch-data
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            resources:
-              requests:
-                storage: 279Gi
-            storageClassName: yc-network-ssd-nonreplicated
-    - name: data-b
-      count: 3
-      config:
-        node.roles:
-          - "data"
-          - "ingest"
-          - "ml"
-          - "transform"
-          - "remote_cluster_client"
-        s3.client.backups.endpoint: storage.yandexcloud.net
-        s3.client.backups.region: ru-central1
-        xpack.monitoring.collection.enabled: true
-        node.attr.zone: ${ZONE}
-        cluster.routing.allocation.awareness.attributes: k8s_node_name,zone
-      podTemplate:
-        spec:
-          initContainers:
-            - name: sysctl
-              securityContext:
-                privileged: true
-                runAsUser: 0
-              command: ["sh", "-c", "sysctl -w vm.max_map_count=262144"]
-          containers:
-            - name: elasticsearch
-              env:
-                - name: ZONE
-                  valueFrom:
-                    fieldRef:
-                      fieldPath: metadata.annotations['topology.kubernetes.io/zone']
-              resources:
-                requests:
-                  cpu: 2
-                  memory: 6Gi
-                limits:
-                  cpu: 2
-                  memory: 6Gi
-          affinity:
-            podAntiAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                - labelSelector:
-                    matchLabels:
-                      elasticsearch.k8s.elastic.co/cluster-name: myelasticsearch
-                      elasticsearch.k8s.elastic.co/node-data: "true"
-                  topologyKey: kubernetes.io/hostname
-          nodeSelector:
-            role: elasticsearch-data-b
-          tolerations:
-            - key: role
-              operator: Equal
-              value: elasticsearch-data-b
-              effect: NoSchedule
-      volumeClaimTemplates:
-        - metadata:
-            name: elasticsearch-data
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            resources:
-              requests:
-                storage: 279Gi
-            storageClassName: yc-network-ssd-nonreplicated
+```
+
+## Настройка Ingress для доступа к Elasticsearch
+
+Для доступа к кластеру Elasticsearch извне используем ресурс `Ingress`:
+
+```yaml
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -790,7 +800,6 @@ metadata:
     cert-manager.io/cluster-issuer: cluster-issuer
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-ssl-verify: "false"
-    # nginx.ingress.kubernetes.io/backend-protocol: HTTPS
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
   name: myelasticsearch-elastic
   namespace: myelasticsearch
@@ -811,6 +820,17 @@ spec:
                 name: myelasticsearch-es-http
                 port:
                   number: 9200
+```
+
+## Заключение
+
+Развертывание Elasticsearch в Kubernetes требует детальной настройки параметров хранения, ресурсов и сетевого взаимодействия. В данной статье был рассмотрен готовый манифест для настройки высокодоступного кластера Elasticsearch с master и data-узлами, а также Ingress для внешнего доступа.
+
+Теперь ваш кластер готов к использованию! 🚀
+
+
+
+
 -----------------------------
 Название файла: ./README.md
 Содержимое файла:
