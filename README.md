@@ -38,7 +38,8 @@ metadata:
 
 ## Настройка GitRepository
 
-Добавим в FluxCD репозиторий Git, содержащий манифесты для развертывания ECK:
+Добавим в FluxCD репозиторий Git, содержащий манифесты для развертывания ECK.
+Этот манифест указывает FluxCD клонировать репозиторий ECK с тегом `v2.10.0`, но игнорировать все файлы, кроме директории `deploy/eck-operator`.
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -58,40 +59,43 @@ spec:
     !/deploy/eck-operator
 ```
 
-Этот манифест указывает FluxCD клонировать репозиторий ECK с тегом `v2.10.0`, но игнорировать все файлы, кроме директории `deploy/eck-operator`.
-Этот манифест указывает FluxCD установить ECK-оператор из Git-репозитория, а также задаёт параметры образа контейнера, политики обновления CRD и количество реплик.
-## Установка HelmRelease
-
-Теперь создадим ресурс `HelmRelease`, который позволит развернуть ECK с помощью Helm:
+## Установка es-operator
+Этот код развертывает оператор ECK (Elastic Cloud on Kubernetes) через Helm-релиз, используя чарт из Git-репозитория. 
+Он настраивает оператор для управления Elasticsearch-кластерами в указанном namespace (myelasticsearch), 
+использует образ версии 2.10.0 и проверяет обновления каждые 5 минут.
 
 ```yaml
+# Определение Helm-релиза для развертывания оператора ECK (Elastic Cloud on Kubernetes)
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: eck
-  namespace: es-operator
+  name: eck  # Название ресурса HelmRelease в Kubernetes
+  namespace: es-operator  # Namespace, где будет развернут оператор ECK
 spec:
-  releaseName: es-operator
+  releaseName: es-operator  # Имя самого Helm-релиза
   chart:
     spec:
-      chart: ./deploy/eck-operator
+      chart: ./deploy/eck-operator  # Путь к чарту внутри Git-репозитория
       sourceRef:
-        kind: GitRepository
-        name: eck
-        namespace: es-operator
-  interval: 5m0s
+        kind: GitRepository  # Источник чарта - Git-репозиторий
+        name: eck  # Имя ресурса GitRepository
+        namespace: es-operator  # Namespace GitRepository
+  interval: 5m0s  # Интервал проверки обновлений (каждые 5 минут)
+  # Настройки установки CRD (Custom Resource Definitions)
   install:
-    crds: Create
+    crds: Create  # Стратегия создания CRD при установке
   upgrade:
-    crds: CreateReplace
+    crds: CreateReplace  # Стратегия обновления CRD (создать или заменить)
+  # Кастомные значения для чарта
   values:
     managedNamespaces:
-      - myelasticsearch # namespace где находится kind: Elasticsearch
+      - myelasticsearch  # Namespace, где оператор будет управлять ресурсами Elasticsearch
+    # Настройки образа оператора
     image:
-      repository: harbor.corp/dockerhub/elastic/eck-operator
-      pullPolicy: IfNotPresent
-      tag: 2.10.0
-    replicaCount: 1
+      repository: elastic/eck-operator  # Репозиторий с образом
+      pullPolicy: IfNotPresent  # Политика загрузки образа
+      tag: 2.10.0  # Версия оператора
+    replicaCount: 1  # Количество реплик оператора
 ```
 
 
