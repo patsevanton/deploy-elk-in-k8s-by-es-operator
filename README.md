@@ -340,11 +340,11 @@ spec:
     - secretKey: username
       remoteRef:
         key: ycloud/elasticsearch/myelasticsearch
-        property: search_suggestions_user
+        property: myelasticsearch_user
     - secretKey: password
       remoteRef:
         key: ycloud/elasticsearch/myelasticsearch
-        property: search_suggestions_password
+        property: myelasticsearch_password
 ```
 
 ### Пользователь `viewer-user`
@@ -830,7 +830,7 @@ spec:
 -----------------------------
 Название файла: ./README.md
 Содержимое файла:
-## Проверка прав индекса suggestions:
+## Проверка прав индекса myelasticsearch-index:
 
 ```shell
 curl -k -X PUT -u myelasticsearch-user:пароль \
