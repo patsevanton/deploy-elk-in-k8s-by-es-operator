@@ -278,7 +278,7 @@ spec:
       caBundle: "base64 encoded string of certificate"  # CA сертификат для проверки TLS соединения
       auth:
         appRole:  # Метод аутентификации - AppRole
-          path: uat-es-approle  # Путь, по которому находится AppRole в Vault
+          path: path-secret  # Путь, по которому находится AppRole в Vault
           roleId: "roleId"  # Role ID для аутентификации
           secretRef:  # Ссылка на Kubernetes Secret, содержащий Secret ID
             key: secret-id  # Ключ в секрете, содержащий Secret ID
