@@ -229,12 +229,40 @@ External Secrets Operator (ESO) упрощает этот процесс, инт
 В этой статье мы рассмотрим, как настроить ESO для управления учетными данными Elasticsearch.
 
 ## Установка External Secrets Operator
-Прежде чем приступить к настройке секретов, необходимо установить External Secrets Operator в Kubernetes-кластере. Установить ESO можно с помощью Helm:
+Прежде чем приступить к настройке секретов, необходимо установить External Secrets Operator в Kubernetes-кластере с использованием FluxCD.
 
 ```sh
-helm repo add external-secrets https://charts.external-secrets.io
-helm repo update
-helm install external-secrets external-secrets/external-secrets --namespace external-secrets --create-namespace
+---
+# Определение Helm-репозитория для External Secrets Operator
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: external-secrets  # Имя репозитория, которое будет использоваться для ссылок
+spec:
+  interval: 24h  # Интервал проверки обновлений в репозитории (1 раз в сутки)
+  url: https://charts.external-secrets.io  # URL официального репозитория External Secrets
+
+---
+# Определение Helm-релиза для установки External Secrets Operator
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: external-secrets  # Имя ресурса HelmRelease
+spec:
+  releaseName: external-secrets  # Имя самого релиза в Helm
+  interval: 5m  # Интервал проверки состояния релиза (каждые 5 минут)
+  chart:
+    spec:
+      chart: external-secrets  # Название чарта из репозитория
+      version: 0.9.20  # Конкретная версия чарта для установки
+      sourceRef:
+        kind: HelmRepository  # Тип источника - ранее определенный Helm-репозиторий
+        name: external-secrets  # Имя репозитория, откуда брать чарт
+  install:
+    crds: CreateReplace  # Стратегия установки CRD: создание или замена при установке
+    createNamespace: true  # Автоматическое создание namespace при установке
+  upgrade:
+    crds: CreateReplace  # Стратегия обновления CRD: создание или замена при обновлении
 ```
 
 После установки необходимо убедиться, что оператор успешно запущен:
@@ -291,7 +319,6 @@ spec:
 Ниже приведен YAML-файл `eso-auth.yaml`, который определяет несколько `ExternalSecret` ресурсов для управления учетными данными Elasticsearch.
 
 ```yaml
-# ES admin
 ---
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
