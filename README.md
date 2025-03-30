@@ -316,46 +316,53 @@ spec:
 ```
 
 ## Определение секретов для Elasticsearch
-Ниже приведен YAML-файл `eso-auth.yaml`, который определяет несколько `ExternalSecret` ресурсов для управления учетными данными Elasticsearch.
+Ниже приведен YAML-файл `eso-auth.yaml`, который создаёт и обновляет Kubernetes-секрет для доступа к Elasticsearch, подтягивая логин и пароль из Vault каждую минуту. 
+В итоге получается секрет с типом basic-auth, куда дополнительно прописываются роли kibana_admin и superuser. 
+Всё работает через External Secrets Operator, который берёт данные из указанного пути в Vault и упаковывает их в секрет.
 
 ```yaml
 ---
+# ExternalSecret - ресурс для синхронизации секретов из внешнего хранилища в Kubernetes
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
 metadata:
-  name: es-admin
-  namespace: myelasticsearch
+  name: es-admin  # Название ExternalSecret ресурса
+  namespace: myelasticsearch  # Namespace, куда будет создан секрет
+
 spec:
+  # Ссылка на SecretStore, где определено подключение к Vault
   secretStoreRef:
-    name: vault-backend
-    kind: ClusterSecretStore
-  refreshInterval: "1m"
+    name: vault-backend  # Имя ClusterSecretStore, определенного ранее
+    kind: ClusterSecretStore  # Тип хранилища (кластерный)
+
+  refreshInterval: "1m"  # Интервал обновления секрета (каждую минуту)
+
+  # Настройки конечного Kubernetes Secret
   target:
-    name: es-admin
+    name: es-admin  # Имя создаваемого секрета в Kubernetes
+
+    # Шаблон для генерации секрета
     template:
-      engineVersion: v2
-      type: kubernetes.io/basic-auth
+      engineVersion: v2  # Версия шаблонизатора
+      type: kubernetes.io/basic-auth  # Тип секрета - для базовой аутентификации
+
+      # Данные, которые будут в секрете
       data:
-        username: "{{ .username }}"
-        password: "{{ .password }}"
-        roles: kibana_admin,superuser
+        username: "{{ .username }}"  # Шаблон для имени пользователя
+        password: "{{ .password }}"  # Шаблон для пароля
+        roles: kibana_admin,superuser  # Статические роли (не из Vault)
+
+  # Определение данных, которые нужно получить из Vault
   data:
-    - secretKey: username
+    - secretKey: username  # Ключ в целевом секрете
       remoteRef:
-        key: ycloud/elasticsearch/myelasticsearch
-        property: admin_user
-    - secretKey: password
+        key: ycloud/elasticsearch/myelasticsearch  # Путь к секрету в Vault
+        property: admin_user  # Конкретное свойство в секрете Vault
+
+    - secretKey: password  # Ключ в целевом секрете
       remoteRef:
-        key: ycloud/elasticsearch/myelasticsearch
-        property: admin_password
-```
-
-Этот ресурс создаст Kubernetes Secret с учетными данными администратора Elasticsearch. Аналогично можно определить секреты для других пользователей.
-
-### Пользователь `myelasticsearch-user`
-
-```yaml
-# ES myelasticsearch user
+        key: ycloud/elasticsearch/myelasticsearch  # Путь к секрету в Vault
+        property: admin_password  # Конкретное свойство в секрете Vault
 ---
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
@@ -385,11 +392,6 @@ spec:
       remoteRef:
         key: ycloud/elasticsearch/myelasticsearch
         property: myelasticsearch_password
-```
-
-### Пользователь `viewer-user`
-
-```yaml
 ---
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
@@ -419,11 +421,6 @@ spec:
       remoteRef:
         key: ycloud/elasticsearch/myelasticsearch
         property: viewer_password
-```
-
-### Доступ к учетным данным для резервного копирования
-
-```yaml
 ---
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
@@ -452,6 +449,7 @@ spec:
 Проверьте, что секреты успешно созданы:
 
 ```sh
+kubectl get externalsecrets.external-secrets.io -n myelasticsearch
 kubectl get secrets -n myelasticsearch
 ```
 
@@ -460,11 +458,6 @@ kubectl get secrets -n myelasticsearch
 ```sh
 kubectl get secret es-admin -n myelasticsearch -o yaml
 ```
-
-## Заключение
-External Secrets Operator значительно упрощает управление секретами в Kubernetes, позволяя безопасно интегрировать внешние хранилища секретов. 
-В данной статье мы рассмотрели, как настроить ESO для работы с Elasticsearch, создав учетные данные пользователей и доступы к S3 для резервного копирования. 
-Этот подход помогает повысить безопасность и удобство работы с конфиденциальными данными в Kubernetes-кластере.
 
 # Развертывание Elasticsearch и Kibana в Kubernetes с ролевой моделью доступа
 
@@ -483,12 +476,6 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: myelasticsearch
-```
-
-Сохраните этот файл как `namespace.yaml` и примените командой:
-
-```sh
-kubectl apply -f namespace.yaml
 ```
 
 ## Настройка ролей для Elasticsearch
@@ -531,12 +518,6 @@ stringData:
       indices:
         - names: ['*']
           privileges: ['read', 'view_index_metadata', 'monitor']
-```
-
-Примените файлы:
-
-```sh
-kubectl apply -f es-roles.yaml
 ```
 
 ## Установка оператора ECK Custom Resources
@@ -592,11 +573,6 @@ spec:
         effect: NoSchedule
 ```
 
-Примените файл:
-
-```sh
-kubectl apply -f es-cr-operator.yaml
-```
 
 ## Развертывание Kibana
 
@@ -632,17 +608,6 @@ spec:
             limits:
               memory: 1Gi
 ```
-
-Примените файл:
-
-```sh
-kubectl apply -f kibana.yaml
-```
-
-## Заключение
-
-В этой статье мы рассмотрели процесс развертывания Elasticsearch и Kibana в Kubernetes, настройку операторов и управление ролями доступа. 
-Теперь ваш кластер настроен и готов к использованию.
 
 
 # Настройка Ingress для Kibana в Kubernetes
