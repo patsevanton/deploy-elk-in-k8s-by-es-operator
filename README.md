@@ -87,13 +87,7 @@ spec:
 
 ## Развертывание
 
-Чтобы применить эти манифесты, добавьте их в ваш Git-репозиторий, который отслеживает FluxCD, или используйте команду `kubectl apply`:
-
-```sh
-kubectl apply -f namespace.yaml
-kubectl apply -f eck.yaml
-```
-
+Чтобы применить эти манифесты, добавьте их в ваш Git-репозиторий, который отслеживает FluxCD.
 После этого FluxCD автоматически синхронизирует и развернет ECK в вашем кластере.
 
 ## Заключение
@@ -409,12 +403,6 @@ spec:
 ```
 
 ## Развертывание и проверка
-После создания YAML-файла с секретами, примените его в кластере:
-
-```sh
-kubectl apply -f eso-auth.yaml
-```
-
 Проверьте, что секреты успешно созданы:
 
 ```sh
@@ -701,27 +689,27 @@ spec:
     - secretName: elastic-backup-myelasticsearch-credentials
   auth:
     fileRealm:
-      - secretName: es-admin
-      - secretName: viewer-user
+      - secretName: es-admin  # Файл с учетными данными администратора
+      - secretName: viewer-user  # Файл с учетными данными пользователя с правами просмотра
     roles:
-      - secretName: myelasticsearch-role
-      - secretName: viewer-role
+      - secretName: myelasticsearch-role  # Роли для кластера
+      - secretName: viewer-role  # Роли для просмотра
   http:
     tls:
       selfSignedCertificate:
-        disabled: true
+        disabled: true  # Отключение самоподписанных сертификатов для упрощенного доступа
   podDisruptionBudget:
     spec:
-      minAvailable: 2
+      minAvailable: 2  # Минимальное количество доступных подов для обеспечения отказоустойчивости
       selector:
         matchLabels:
           elasticsearch.k8s.elastic.co/cluster-name: myelasticsearch
   nodeSets:
     - name: master
-      count: 3
+      count: 3  # Количество мастер-узлов
       config:
-        node.roles: ["master", "remote_cluster_client"]
-        xpack.monitoring.collection.enabled: true
+        node.roles: ["master", "remote_cluster_client"]  # Роли мастер-узлов
+        xpack.monitoring.collection.enabled: true  # Включение мониторинга
         s3.client.backups.endpoint: storage.yandexcloud.net
         s3.client.backups.region: ru-central1
       podTemplate:
@@ -731,7 +719,7 @@ spec:
               securityContext:
                 privileged: true
                 runAsUser: 0
-              command: ["sh", "-c", "sysctl -w vm.max_map_count=262144"]
+              command: ["sh", "-c", "sysctl -w vm.max_map_count=262144"]  # Настройка параметра памяти
           containers:
             - name: elasticsearch
               resources:
@@ -741,13 +729,8 @@ spec:
                 limits:
                   cpu: 4
                   memory: 8Gi
-```
-
-### Data-узлы
-
-```yaml
     - name: data-a
-      count: 3
+      count: 3  # Количество data-узлов типа A
       config:
         node.roles:
           - "data"
@@ -758,7 +741,7 @@ spec:
         s3.client.backups.endpoint: storage.yandexcloud.net
         s3.client.backups.region: ru-central1
         xpack.monitoring.collection.enabled: true
-        node.attr.zone: ${ZONE}
+        node.attr.zone: ${ZONE}  # Зона размещения узла
         cluster.routing.allocation.awareness.attributes: k8s_node_name,zone
       podTemplate:
         spec:
@@ -778,7 +761,7 @@ spec:
               resources:
                 requests:
                   cpu: 10
-                  memory: 30Gi
+                  memory: 30Gi  # Запрос ресурсов для узлов типа A
                 limits:
                   cpu: 10
                   memory: 30Gi
@@ -804,7 +787,7 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - myelasticsearch.es.k8s.corp
+        - myelasticsearch.es.k8s.corp  # Доменное имя для доступа к Elasticsearch
       secretName: myelasticsearch-tls
   rules:
     - host: myelasticsearch.es.k8s.corp
@@ -816,7 +799,7 @@ spec:
               service:
                 name: myelasticsearch-es-http
                 port:
-                  number: 9200
+                  number: 9200  # Порт для HTTP-доступа к Elasticsearch
 ```
 
 ## Заключение
@@ -824,12 +807,7 @@ spec:
 Развертывание Elasticsearch в Kubernetes требует детальной настройки параметров хранения, ресурсов и сетевого взаимодействия.
 В данной статье был рассмотрен готовый манифест для настройки высокодоступного кластера Elasticsearch с master и data-узлами, а также Ingress для внешнего доступа.
 
-Теперь ваш кластер готов к использованию! 🚀
 
-
------------------------------
-Название файла: ./README.md
-Содержимое файла:
 ## Проверка прав индекса myelasticsearch-index:
 
 ```shell
@@ -838,31 +816,28 @@ curl -k -X PUT -u myelasticsearch-user:пароль \
 -H "Content-Type: application/json" -d '{}'
 ```
 
------------------------------
-Название файла: ./kustomization.yaml
-Содержимое файла:
+
+Название файла: kustomization.yaml
+```yaml
 ---
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - elasticsearch.yaml
-  - es-cr-operator.yaml
-  - eso-auth.yaml
-  - es-roles.yaml
-  - exporter.yaml
-  - kibana.yaml
-  - namespace.yaml
-  - prometheus-rules.yaml
------------------------------
-
+  - elasticsearch.yaml  # Основной конфигурационный файл Elasticsearch
+  - es-cr-operator.yaml  # Файл оператора Elasticsearch
+  - eso-auth.yaml  # Настройки аутентификации
+  - es-roles.yaml  # Определение ролей
+  - exporter.yaml  # Конфигурация экспортера метрик
+  - kibana.yaml  # Конфигурация Kibana
+  - namespace.yaml  # Определение пространства имен
+  - prometheus-rules.yaml  # Настройки правил для Prometheus
 ```
 
 
 ## Бекап elasticsearch
-
-```
-Название файла: ./snapshot-policy.yaml
+Название файла: snapshot-policy.yaml
 Содержимое файла:
+```yaml
 apiVersion: es.eck.github.com/v1alpha1
 kind: SnapshotLifecyclePolicy
 metadata:
@@ -885,9 +860,11 @@ spec:
         "max_count": 336 
       }
     }
------------------------------
-Название файла: ./snapshot-repository.yaml
+```
+
+Название файла: snapshot-repository.yaml
 Содержимое файла:
+```yaml
 apiVersion: es.eck.github.com/v1alpha1
 kind: SnapshotRepository
 metadata:
@@ -902,14 +879,16 @@ spec:
         "client": "backups"
       }
     }
------------------------------
+```
+
 Название файла: ./kustomization.yaml
 Содержимое файла:
+```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - snapshot-policy.yaml
   - snapshot-repository.yaml
------------------------------
-
 ```
+
+Теперь ваш кластер готов к использованию! 🚀
