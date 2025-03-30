@@ -251,21 +251,38 @@ kubectl get pods -n external-secrets
 Для начала создадим `ClusterSecretStore`, который определяет, откуда ESO будет получать секреты:
 
 ```yaml
+---
+# Секрет Kubernetes, содержащий sensitive данные для аутентификации в Vault
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vault-secret  # Имя секрета, который будет использоваться для аутентификации
+type: Opaque  # Тип секрета - непрозрачные данные
+stringData:
+  secret-id: "secret-id-of-roleId"  # Секретный ID для AppRole аутентификации в Vault
+  # Это чувствительные данные, которые хранятся в секрете
+
+---
+# Конфигурация ClusterSecretStore для External Secrets Operator
+# Определяет как подключиться к Vault и получать секреты
 apiVersion: external-secrets.io/v1beta1
 kind: ClusterSecretStore
 metadata:
-  name: vault-backend
+  name: vault-backend  # Имена хранилища секретов, доступного на уровне кластера
 spec:
   provider:
-    vault:
-      server: "https://vault.example.com"
-      path: "secret"
-      version: "v2"
+    vault:  # Провайдер - HashiCorp Vault
+      server: "https://vault.example.com"  # URL сервера Vault
+      path: "secret"  # Путь к бэкенду секретов в Vault
+      version: v2  # Версия KV (Key-Value) бэкенда (v1 или v2)
+      caBundle: "base64 encoded string of certificate"  # CA сертификат для проверки TLS соединения
       auth:
-        tokenSecretRef:
-          name: vault-token
-          key: token
-          namespace: vault
+        appRole:  # Метод аутентификации - AppRole
+          path: uat-es-approle  # Путь, по которому находится AppRole в Vault
+          roleId: "roleId"  # Role ID для аутентификации
+          secretRef:  # Ссылка на Kubernetes Secret, содержащий Secret ID
+            key: secret-id  # Ключ в секрете, содержащий Secret ID
+            name: vault-secret  # Имя секрета, определенного выше
 ```
 
 ## Определение секретов для Elasticsearch
