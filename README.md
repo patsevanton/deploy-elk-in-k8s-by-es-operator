@@ -1,6 +1,6 @@
 Разворачиваем Elastic Cloud в Kubernetes используя FluxCD
 
-# Развертывание Elastic Cloud on Kubernetes (ECK) с использованием FluxCD
+# Развертывание Elastic Cloud в Kubernetes (ECK) с использованием FluxCD
 
 ## Введение
 
