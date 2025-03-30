@@ -247,8 +247,10 @@ kubectl get pods -n external-secrets
 В данном примере используется HashiCorp Vault в качестве хранилища секретов. Предполагается, что Vault уже настроен и доступен.
 
 ### Создание `ClusterSecretStore`
-
-Для начала создадим `ClusterSecretStore`, который определяет, откуда ESO будет получать секреты:
+Этот код настраивает интеграцию Kubernetes с HashiCorp Vault через External Secrets Operator.
+Секрет (vault-secret) – хранит конфиденциальный secret-id, необходимый для аутентификации в Vault через механизм AppRole.
+ClusterSecretStore (vault-backend) – определяет подключение к Vault (адрес, путь, версия KV-движка), аутентификацию через AppRole (с использованием roleId и secret-id из секрета) и TLS-сертификат для безопасного соединения.
+Таким образом, External Secrets Operator сможет безопасно получать секреты из Vault и передавать их в Kubernetes.
 
 ```yaml
 ---
