@@ -817,7 +817,7 @@ metadata:
 spec:
   body: |
     {
-      "schedule": "0 */15 * * * ?", 
+      "schedule": "0 2 * * * ?", 
       "name": "myelasticsearch-snapshot-policy", 
       "repository": "myelasticsearch-backup-repository", 
       "config": { 
