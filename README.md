@@ -809,26 +809,26 @@ resources:
 Название файла: snapshot-policy.yaml
 Содержимое файла:
 ```yaml
-apiVersion: es.eck.github.com/v1alpha1
-kind: SnapshotLifecyclePolicy
+apiVersion: es.eck.github.com/v1alpha1  # Версия API для Custom Resource Definition
+kind: SnapshotLifecyclePolicy           # Тип ресурса - политика жизненного цикла снапшотов
 metadata:
-  name: myelasticsearch-backup-policy
-  namespace: myelasticsearch
+  name: myelasticsearch-backup-policy   # Имя политики
+  namespace: myelasticsearch           # Пространство имен, где применяется политика
 spec:
-  body: |
+  body: |  # Тело политики в формате JSON
     {
-      "schedule": "0 2 * * * ?", 
-      "name": "myelasticsearch-snapshot-policy", 
-      "repository": "myelasticsearch-backup-repository", 
-      "config": { 
-        "indices": ["*"], 
-        "ignore_unavailable": false,
-        "include_global_state": true
+      "schedule": "0 2 * * * ?",        # Расписание (каждый день в 02:00)
+      "name": "myelasticsearch-snapshot-policy",  # Имя политики в Elasticsearch
+      "repository": "myelasticsearch-backup-repository",  # Репозиторий для снапшотов
+      "config": {                       # Конфигурация снапшотов
+        "indices": ["*"],               # Какие индексы включать (все)
+        "ignore_unavailable": false,    # Не игнорировать недоступные индексы
+        "include_global_state": true    # Включать глобальное состояние кластера
       },
-      "retention": { 
-        "expire_after": "14d", 
-        "min_count": 72, 
-        "max_count": 336 
+      "retention": {                   # Политика хранения снапшотов
+        "expire_after": "14d",         # Удалять снапшоты старше 14 дней
+        "min_count": 72,               # Минимум 72 снапшота (даже если старые)
+        "max_count": 336               # Максимум 336 снапшотов (удалять самые старые)
       }
     }
 ```
@@ -836,11 +836,11 @@ spec:
 Название файла: snapshot-repository.yaml
 Содержимое файла:
 ```yaml
-apiVersion: es.eck.github.com/v1alpha1
-kind: SnapshotRepository
+apiVersion: es.eck.github.com/v1alpha1  # Указываем версию API, специфичную для Elasticsearch Operator
+kind: SnapshotRepository  # Определяем тип ресурса как репозиторий снапшотов
 metadata:
-  name: backup-repository
-  namespace: myelasticsearch
+  name: backup-repository  # Имя репозитория для бэкапов
+  namespace: myelasticsearch  # Указываем namespace, в котором создаётся репозиторий
 spec:
   body: |
     {
@@ -851,6 +851,8 @@ spec:
       }
     }
 ```
+Где elastic-backup - название S3-бакета для хранения снапшотов
+backups - имя клиента, настроенного в Elastic для доступа к S3 (используется в s3.client.backups.*)
 
 Название файла: kustomization.yaml
 Содержимое файла:
