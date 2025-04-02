@@ -1,19 +1,13 @@
-Разворачиваем Elasticsearch в Kubernetes используя FluxCD
-
-Elasticsearch — это распределённая поисковая и аналитическая система для обработки больших объёмов данных в реальном времени. 
-В Kubernetes его развёртывание обычно осуществляется через оператор ECK (Elastic Cloud on Kubernetes), который упрощает управление жизненным циклом кластера.
-Для эффективного мониторинга работы Elasticsearch используется связка Prometheus и специального экспортёра метрик. 
-Экспортёр собирает ключевые показатели (индексация, поисковые запросы, использование ресурсов) и делает их доступными для Prometheus через ServiceMonitor.
-Конфигурация включает настройку аутентификации, SSL-сертификатов для безопасного соединения и томов для хранения данных. 
-Оператор ECK автоматизирует эти процессы, обеспечивая отказоустойчивый кластер с возможностью горизонтального масштабирования.
-
-
-# Развертывание Elastic Cloud в Kubernetes (ECK) с использованием FluxCD
+# Разворачиваем Elasticsearch в Kubernetes используя operator и FluxCD
 
 ## Введение
 
-В этой статье мы рассмотрим, как развернуть Elastic Cloud on Kubernetes (ECK) с использованием FluxCD. 
-Мы создадим необходимые ресурсы, включая `Namespace`, `GitRepository` и `HelmRelease`.
+Elasticsearch — это распределённая поисковая и аналитическая система для обработки больших объёмов данных в реальном времени.
+В Kubernetes его развёртывание обычно осуществляется через оператор ECK (Elastic Cloud on Kubernetes), который упрощает управление жизненным циклом кластера.
+Для эффективного мониторинга работы Elasticsearch используется связка Prometheus и специального экспортёра метрик.
+Экспортёр собирает ключевые показатели (индексация, поисковые запросы, использование ресурсов) и делает их доступными для Prometheus через ServiceMonitor.
+Конфигурация включает настройку аутентификации, SSL-сертификатов для безопасного соединения и томов для хранения данных.
+Оператор ECK автоматизирует эти процессы, обеспечивая отказоустойчивый кластер с возможностью горизонтального масштабирования.
 
 
 ## Подготовка окружения
@@ -97,116 +91,6 @@ spec:
       tag: 2.10.0  # Версия оператора
     replicaCount: 1  # Количество реплик оператора
 ```
-
-
-# Установка и мониторинг Elasticsearch с Prometheus
-
-## Установка Elasticsearch Exporter
-Prometheus Elasticsearch Exporter используется для сбора метрик из Elasticsearch и их передачи в Prometheus. 
-Чтобы развернуть его в Kubernetes, создадим `HelmRelease` с нужной конфигурацией.
-
-### Файл `exporter.yaml`
-```yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: myelasticsearch-exporter
-  namespace: myelasticsearch
-spec:
-  chart:
-    spec:
-      chart: prometheus-elasticsearch-exporter
-      version: 5.9.0
-      sourceRef:
-        kind: HelmRepository
-        name: prometheus-community
-        namespace: monitoring
-  interval: 5m
-  releaseName: myelasticsearch-exporter
-  values:
-    env:
-      ES_USERNAME: elastic
-    extraEnvSecrets:
-      ES_PASSWORD:
-        secret: myelasticsearch-es-elastic-user
-        key: elastic
-    es:
-      uri: https://myelasticsearch-es-http:9200
-      useExistingSecrets: true
-      sslSkipVerify: true
-    secretMounts:
-      - name: elastic-certs
-        secretName: myelasticsearch-es-http-certs-internal
-        path: /ssl
-    log:
-      format: json
-    serviceMonitor:
-      enabled: true
-```
-
-## Настройка правил мониторинга
-Для настройки алертов в Prometheus необходимо создать `PrometheusRule`, который будет отслеживать критические показатели и генерировать предупреждения.
-
-### Файл `prometheus-rules.yaml`
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: myelasticsearch
-  namespace: myelasticsearch
-  labels:
-    release: prometheus-operator
-spec:
-  groups:
-    - name: ElasticsearchExporter
-      rules:
-        - alert: ElasticsearchExporterDown
-          expr: up{service=~ ".*elasticsearch.*"} != 1
-          for: 1m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch exporter down!
-            description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute"
-
-        - alert: ElasticsearchCpuUsageHigh
-          expr: "elasticsearch_process_cpu_percent > 80"
-          for: 2m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch CPU Usage High
-            description: "The {{ $labels.cluster }} node {{ $labels.name }} CPU usage is over 80% (value {{ $value }})"
-
-        - alert: ElasticsearchHeapUsageTooHigh
-          expr: '(elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"}) * 100 > 90'
-          for: 2m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch Heap Usage Too High
-            description: "The {{ $labels.cluster }} node {{ $labels.name }} heap usage is over 90% (value {{ $value }})"
-
-        - alert: ElasticsearchDiskSpaceLow
-          expr: "elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes * 100 < 20"
-          for: 2m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch disk space low
-            description: "The {{ $labels.cluster }} node {{ $labels.name }} disk usage is over 80% (value {{ $value }})"
-
-        - alert: ElasticsearchClusterRed
-          expr: 'elasticsearch_cluster_health_status{color="red"} == 1'
-          for: 0m
-          labels:
-            severity: warning
-          annotations:
-            summary: Elasticsearch Cluster Red!
-            description: "Elastic Cluster {{ $labels.cluster }} is in Red status!"
-```
-
-
 
 
 # Управление секретами Elasticsearch с помощью External Secrets Operator
@@ -663,8 +547,7 @@ spec:
 - Использование `podDisruptionBudget` для обеспечения отказоустойчивости
 - Разделение узлов на:
   - **Master-узлы** (3 шт.)
-  - **Data-узлы типа A** (3 шт.) с увеличенными ресурсами
-  - **Data-узлы типа B** (3 шт.) с меньшими ресурсами
+  - **Data-узлы** (3 шт.)
 
 ### Полный YAML-код Elasticsearch
 
@@ -724,8 +607,8 @@ spec:
                 limits:
                   cpu: 4
                   memory: 8Gi
-    - name: data-a
-      count: 3  # Количество data-узлов типа A
+    - name: data
+      count: 3  # Количество data-узлов
       config:
         node.roles:
           - "data"
@@ -755,11 +638,11 @@ spec:
                       fieldPath: metadata.annotations['topology.kubernetes.io/zone']
               resources:
                 requests:
-                  cpu: 10
-                  memory: 30Gi  # Запрос ресурсов для узлов типа A
+                  cpu: 4
+                  memory: 10Gi  # Запрос ресурсов для узлов типа A
                 limits:
-                  cpu: 10
-                  memory: 30Gi
+                  cpu: 4
+                  memory: 10Gi
 ```
 
 ## Настройка Ingress для доступа к Elasticsearch
@@ -797,8 +680,6 @@ spec:
                   number: 9200  # Порт для HTTP-доступа к Elasticsearch
 ```
 
-
-
 ## Проверка прав индекса myelasticsearch-index:
 
 ```shell
@@ -806,6 +687,114 @@ curl -k -X PUT -u myelasticsearch-user:пароль \
 "https://myelasticsearch.es.k8s.corp/myelasticsearch-index" \
 -H "Content-Type: application/json" -d '{}'
 ```
+
+# Установка и мониторинг Elasticsearch используя Prometheus
+
+## Установка Elasticsearch Exporter
+Prometheus Elasticsearch Exporter используется для сбора метрик из Elasticsearch и их передачи в Prometheus.
+Чтобы развернуть его в Kubernetes, создадим `HelmRelease` с нужной конфигурацией.
+
+### Файл `exporter.yaml`
+```yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: myelasticsearch-exporter
+  namespace: myelasticsearch
+spec:
+  chart:
+    spec:
+      chart: prometheus-elasticsearch-exporter
+      version: 5.9.0
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: monitoring
+  interval: 5m
+  releaseName: myelasticsearch-exporter
+  values:
+    env:
+      ES_USERNAME: elastic
+    extraEnvSecrets:
+      ES_PASSWORD:
+        secret: myelasticsearch-es-elastic-user
+        key: elastic
+    es:
+      uri: http://myelasticsearch-es-http:9200
+      useExistingSecrets: true
+      sslSkipVerify: true
+    secretMounts:
+      - name: elastic-certs # если вы будете подключатся к elasticsearch по HTTPS
+        secretName: myelasticsearch-es-http-certs-internal
+        path: /ssl
+    log:
+      format: json
+    serviceMonitor:
+      enabled: true
+```
+
+## Настройка правил мониторинга
+Для настройки алертов в Prometheus необходимо создать `PrometheusRule`, который будет отслеживать критические показатели и генерировать предупреждения.
+
+### Файл `prometheus-rules.yaml`
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: myelasticsearch
+  namespace: myelasticsearch
+  labels:
+    release: prometheus-operator
+spec:
+  groups:
+    - name: ElasticsearchExporter
+      rules:
+        - alert: ElasticsearchExporterDown
+          expr: up{service=~ ".*elasticsearch.*"} != 1
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: Elasticsearch exporter down!
+            description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute"
+
+        - alert: ElasticsearchCpuUsageHigh
+          expr: "elasticsearch_process_cpu_percent > 80"
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: Elasticsearch CPU Usage High
+            description: "The {{ $labels.cluster }} node {{ $labels.name }} CPU usage is over 80% (value {{ $value }})"
+
+        - alert: ElasticsearchHeapUsageTooHigh
+          expr: '(elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"}) * 100 > 90'
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: Elasticsearch Heap Usage Too High
+            description: "The {{ $labels.cluster }} node {{ $labels.name }} heap usage is over 90% (value {{ $value }})"
+
+        - alert: ElasticsearchDiskSpaceLow
+          expr: "elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes * 100 < 20"
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: Elasticsearch disk space low
+            description: "The {{ $labels.cluster }} node {{ $labels.name }} disk usage is over 80% (value {{ $value }})"
+
+        - alert: ElasticsearchClusterRed
+          expr: 'elasticsearch_cluster_health_status{color="red"} == 1'
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: Elasticsearch Cluster Red!
+            description: "Elastic Cluster {{ $labels.cluster }} is in Red status!"
+```
+
 
 
 Название файла: kustomization.yaml
@@ -872,7 +861,7 @@ spec:
     }
 ```
 
-Название файла: ./kustomization.yaml
+Название файла: kustomization.yaml
 Содержимое файла:
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
