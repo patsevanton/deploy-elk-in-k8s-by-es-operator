@@ -331,13 +331,7 @@ kubectl get secrets -n myelasticsearch
 kubectl get secret es-admin -n myelasticsearch -o yaml
 ```
 
-# Развертывание Elasticsearch и Kibana в Kubernetes с ролевой моделью доступа
-
-## Введение
-
-В этой статье мы рассмотрим, как развернуть Elasticsearch и Kibana в Kubernetes с помощью операторов и настроить роли для управления доступом.
-
-## Подготовка к развертыванию
+## Развертывание Elasticsearch и Kibana в Kubernetes с ролевой моделью доступа
 
 ### Создание пространства имен
 Прежде чем начать, создадим пространство имен `myelasticsearch`:
@@ -394,6 +388,10 @@ stringData:
 
 ## Установка оператора ECK Custom Resources
 
+ECK Custom Resources упрощает управление Elasticsearch и Kibana в Kubernetes.
+ECK Custom Resources позволяет создавать и настраивать индексы, шаблоны, пользователей, роли, пространства в Kibana и управлять бэкапами через snapshot-репозитории. 
+Также автоматизирует применение изменений и интегрируется с Kubernetes, что делает администрирование Elastic-ресурсов удобнее.
+
 Для управления Elasticsearch используем HelmRelease:
 
 ```yaml
@@ -436,13 +434,6 @@ spec:
         usernamePasswordSecret:
           secretName: myelasticsearch-es-elastic-user
           username: elastic
-    nodeSelector:
-      role: elasticsearch-master
-    tolerations:
-      - key: role
-        operator: Equal
-        value: elasticsearch-master
-        effect: NoSchedule
 ```
 
 
